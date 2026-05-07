@@ -1,15 +1,15 @@
 import {useQuery, type QueryStatus} from '@tanstack/react-query';
+import type {QueryFunctionContext} from '@tanstack/react-query';
 import * as qs from 'query-string';
 
-import type {Client} from 'sentry/api';
 import {normalizeDateTimeParams} from 'sentry/components/pageFilters/parse';
 import {usePageFilters} from 'sentry/components/pageFilters/usePageFilters';
 import {DEFAULT_STATS_PERIOD} from 'sentry/constants';
 import type {PageFilters} from 'sentry/types/core';
 import type {Organization} from 'sentry/types/organization';
+import {apiFetch} from 'sentry/utils/api/apiFetch';
 import {getApiUrl} from 'sentry/utils/api/getApiUrl';
 import {decodeScalar} from 'sentry/utils/queryString';
-import {useApi} from 'sentry/utils/useApi';
 import {useDefaultMaxPickableDays} from 'sentry/utils/useMaxPickableDays';
 import {useOrganization} from 'sentry/utils/useOrganization';
 import {useIsEAPTraceEnabled} from 'sentry/views/performance/newTraceDetails/useIsEAPTraceEnabled';
@@ -58,29 +58,6 @@ function getMetaQueryParams(
   };
 }
 
-async function fetchSingleTraceMetaNew(
-  type: 'non-eap' | 'eap',
-  api: Client,
-  organization: Organization,
-  trace: TraceMetaTrace,
-  queryParams: any
-) {
-  const url =
-    type === 'eap'
-      ? getApiUrl('/organizations/$organizationIdOrSlug/trace-meta/$traceId/', {
-          path: {organizationIdOrSlug: organization.slug, traceId: trace.traceSlug},
-        })
-      : getApiUrl('/organizations/$organizationIdOrSlug/events-trace-meta/$traceId/', {
-          path: {organizationIdOrSlug: organization.slug, traceId: trace.traceSlug},
-        });
-
-  const data = await api.requestPromise(url, {
-    method: 'GET',
-    data: queryParams,
-  });
-  return data;
-}
-
 export function isEAPTraceMeta(
   meta: TraceMeta | EAPTraceMeta | undefined
 ): meta is EAPTraceMeta {
@@ -90,10 +67,10 @@ export function isEAPTraceMeta(
 
 async function fetchTraceMetaInBatches(
   type: 'non-eap' | 'eap',
-  api: Client,
   organization: Organization,
   traces: TraceMetaTrace[],
   normalizedParams: any,
+  fetchContext: QueryFunctionContext,
   filters: Partial<PageFilters> = {},
   statsPeriodOverride?: string
 ) {
@@ -125,13 +102,33 @@ async function fetchTraceMetaInBatches(
     const batch = pendingTraces.splice(0, 3);
     const results = await Promise.allSettled<TraceMeta | EAPTraceMeta>(
       batch.map(trace => {
-        const queryParams = getMetaQueryParams(
-          trace,
-          normalizedParams,
-          filters,
-          statsPeriodOverride
+        let url = getApiUrl(
+          '/organizations/$organizationIdOrSlug/events-trace-meta/$traceId/',
+          {path: {organizationIdOrSlug: organization.slug, traceId: trace.traceSlug}}
         );
-        return fetchSingleTraceMetaNew(type, api, organization, trace, queryParams);
+
+        if (type === 'eap') {
+          url = getApiUrl('/organizations/$organizationIdOrSlug/trace-meta/$traceId/', {
+            path: {organizationIdOrSlug: organization.slug, traceId: trace.traceSlug},
+          });
+        }
+
+        return apiFetch<TraceMeta | EAPTraceMeta>({
+          ...fetchContext,
+          queryKey: [
+            url,
+            {
+              method: 'GET',
+              data: getMetaQueryParams(
+                trace,
+                normalizedParams,
+                filters,
+                statsPeriodOverride
+              ),
+            },
+            {infinite: false},
+          ],
+        }).then(response => response.json);
       })
     );
 
@@ -186,7 +183,6 @@ function getTraceMetaTraces(options: UseTraceMetaOptions): TraceMetaTrace[] {
 }
 
 export function useTraceMeta(options: UseTraceMetaOptions): TraceMetaQueryResults {
-  const api = useApi();
   const filters = usePageFilters();
   const organization = useOrganization();
   const isEAP = useIsEAPTraceEnabled();
@@ -204,16 +200,13 @@ export function useTraceMeta(options: UseTraceMetaOptions): TraceMetaQueryResult
   // eslint-disable-next-line @tanstack/query/exhaustive-deps
   const {data, isLoading, status} = useQuery({
     queryKey: ['traceData', traces.map(trace => trace.traceSlug)],
-    queryFn: async (): Promise<{
-      apiErrors: Error[];
-      meta: TraceMeta | EAPTraceMeta;
-    }> => {
+    queryFn: async context => {
       const result = await fetchTraceMetaInBatches(
         isEAP ? 'eap' : 'non-eap',
-        api,
         organization,
         traces,
         normalizedParams,
+        context,
         filters.selection
       );
 
@@ -227,10 +220,10 @@ export function useTraceMeta(options: UseTraceMetaOptions): TraceMetaQueryResult
       ) {
         return fetchTraceMetaInBatches(
           isEAP ? 'eap' : 'non-eap',
-          api,
           organization,
           traces,
           normalizedParams,
+          context,
           filters.selection,
           `${maxPickableDays}d`
         );
