@@ -71,6 +71,13 @@ async function fetchSingleTraceMetaNew(
   return data;
 }
 
+export function isEAPTraceMeta(
+  meta: TraceMeta | EAPTraceMeta | undefined
+): meta is EAPTraceMeta {
+  if (!meta) return false;
+  return 'uptime_checks' in meta && !('transactions' in meta);
+}
+
 async function fetchTraceMetaInBatches(
   type: 'non-eap' | 'eap',
   api: Client,
@@ -160,6 +167,7 @@ async function fetchTraceMetaInBatches(
 export type TraceMetaQueryResults = {
   data: TraceMeta | EAPTraceMeta | undefined;
   errors: Error[];
+  isLoading: boolean;
   status: QueryStatus;
 };
 
@@ -228,8 +236,9 @@ export function useTraceMeta(replayTraces: ReplayTrace[]): TraceMetaQueryResults
       errors: query.data?.apiErrors ?? [],
       status:
         query.data?.apiErrors?.length === replayTraces.length ? 'error' : query.status,
+      isLoading: query.isLoading,
     };
-  }, [query.data, query.status, replayTraces.length]);
+  }, [query.data, query.status, replayTraces.length, query.isLoading]);
 
   // When projects don't have performance set up, we allow them to view a sample transaction.
   // The backend creates the sample transaction, however the trace is created async, so when the
@@ -260,6 +269,7 @@ export function useTraceMeta(replayTraces: ReplayTrace[]): TraceMetaQueryResults
           },
       errors: [],
       status: 'success' as QueryStatus,
+      isLoading: false,
     };
   }, [isEAP]);
 
