@@ -19,6 +19,7 @@ import {useLocation} from 'sentry/utils/useLocation';
 import {useNavigate} from 'sentry/utils/useNavigate';
 import {useOrganization} from 'sentry/utils/useOrganization';
 import {usePrevious} from 'sentry/utils/usePrevious';
+import {useGlobalAlerts} from 'sentry/views/app/globalAlerts';
 import {getSavedQueryWithDataset} from 'sentry/views/discover/savedQuery/utils';
 
 import {Results} from './results';
@@ -32,6 +33,7 @@ function makeDiscoverHomepageQueryKey(organization: Organization): ApiQueryKey {
 }
 
 function Homepage() {
+  const {addAlert} = useGlobalAlerts();
   const organization = useOrganization();
   const api = useApi();
   const queryClient = useQueryClient();
@@ -116,6 +118,7 @@ function Homepage() {
 
   return (
     <Results
+      addAlert={addAlert}
       api={api}
       loading={isLoading}
       location={location}

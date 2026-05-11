@@ -73,6 +73,7 @@ import {useLocation} from 'sentry/utils/useLocation';
 import {useNavigate} from 'sentry/utils/useNavigate';
 import {useOrganization} from 'sentry/utils/useOrganization';
 import {useProjects} from 'sentry/utils/useProjects';
+import {useGlobalAlerts, type AddAlert} from 'sentry/views/app/globalAlerts';
 import {DashboardWidgetSource} from 'sentry/views/dashboards/types';
 import {hasDatasetSelector} from 'sentry/views/dashboards/utils';
 import {
@@ -108,6 +109,7 @@ import {useHasPageFrameFeature} from 'sentry/views/navigation/useHasPageFrameFea
 import {addRoutePerformanceContext} from 'sentry/views/performance/utils';
 
 type Props = {
+  addAlert: AddAlert;
   api: Client;
   loading: boolean;
   location: Location;
@@ -214,7 +216,7 @@ export class Results extends Component<Props, State> {
         {replace: true}
       );
     }
-    loadOrganizationTags(this.tagsApi, organization.slug, selection);
+    loadOrganizationTags(this.tagsApi, organization.slug, selection, this.props.addAlert);
     addRoutePerformanceContext(selection);
     this.checkEventView();
     this.canLoadEvents();
@@ -268,7 +270,12 @@ export class Results extends Component<Props, State> {
       !isEqual(prevProps.selection.datetime, selection.datetime) ||
       !isEqual(prevProps.selection.projects, selection.projects)
     ) {
-      loadOrganizationTags(this.tagsApi, organization.slug, selection);
+      loadOrganizationTags(
+        this.tagsApi,
+        organization.slug,
+        selection,
+        this.props.addAlert
+      );
       addRoutePerformanceContext(selection);
     }
 
@@ -1476,6 +1483,7 @@ export default function ResultsContainer() {
   const {selection} = usePageFilters();
   const location = useLocation();
   const navigate = useNavigate();
+  const {addAlert} = useGlobalAlerts();
 
   /**
    * Block `<Results>` from mounting until GSH is ready since there are API
@@ -1504,6 +1512,7 @@ export default function ResultsContainer() {
         selection={selection}
         location={location}
         navigate={navigate}
+        addAlert={addAlert}
       />
     </PageFiltersContainer>
   );
