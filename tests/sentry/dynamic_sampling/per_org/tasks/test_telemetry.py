@@ -7,7 +7,7 @@ import pytest
 
 from sentry.dynamic_sampling.per_org.tasks.telemetry import (
     DynamicSamplingException,
-    TelemetryStatus,
+    DynamicSamplingStatus,
     track_dynamic_sampling,
 )
 from sentry.testutils.helpers.options import override_options
@@ -43,7 +43,7 @@ def test_records_duration_and_reraises_with_failed_status_on_exception() -> None
     ):
         boom()
 
-    assert timer_tags["status"] == TelemetryStatus.FAILED.value
+    assert timer_tags["status"] == DynamicSamplingStatus.FAILED.value
 
 
 @override_options(_GATE_OPTIONS)
@@ -63,16 +63,16 @@ def test_passes_result_through_and_emits_completed_on_success() -> None:
         assert add(2, 3) == 5
 
     timer_mock.assert_called_once_with("dynamic_sampling.add.duration", sample_rate=1.0)
-    assert timer_tags["status"] == TelemetryStatus.COMPLETED.value
-    emit.assert_called_once_with("dynamic_sampling.add.status", TelemetryStatus.COMPLETED)
+    assert timer_tags["status"] == DynamicSamplingStatus.COMPLETED.value
+    emit.assert_called_once_with("dynamic_sampling.add.status", DynamicSamplingStatus.COMPLETED)
     sdk.capture_exception.assert_not_called()
 
 
 @override_options(_GATE_OPTIONS)
 def test_emits_returned_terminal_status_without_completed_status() -> None:
     @track_dynamic_sampling
-    def skipped() -> TelemetryStatus:
-        return TelemetryStatus.NOT_IN_ROLLOUT
+    def skipped() -> DynamicSamplingStatus:
+        return DynamicSamplingStatus.NOT_IN_ROLLOUT
 
     timer, timer_tags = _capture_timer_tags()
     with (
@@ -82,11 +82,13 @@ def test_emits_returned_terminal_status_without_completed_status() -> None:
         patch("sentry.dynamic_sampling.per_org.tasks.telemetry.emit_status") as emit,
         patch("sentry.dynamic_sampling.per_org.tasks.telemetry.sentry_sdk") as sdk,
     ):
-        assert skipped() == TelemetryStatus.NOT_IN_ROLLOUT
+        assert skipped() == DynamicSamplingStatus.NOT_IN_ROLLOUT
 
     timer_mock.assert_called_once_with("dynamic_sampling.skipped.duration", sample_rate=1.0)
-    assert timer_tags["status"] == TelemetryStatus.NOT_IN_ROLLOUT.value
-    emit.assert_called_once_with("dynamic_sampling.skipped.status", TelemetryStatus.NOT_IN_ROLLOUT)
+    assert timer_tags["status"] == DynamicSamplingStatus.NOT_IN_ROLLOUT.value
+    emit.assert_called_once_with(
+        "dynamic_sampling.skipped.status", DynamicSamplingStatus.NOT_IN_ROLLOUT
+    )
     sdk.capture_exception.assert_not_called()
 
 
@@ -94,7 +96,7 @@ def test_emits_returned_terminal_status_without_completed_status() -> None:
 def test_emits_terminal_status_exception_without_failed_status() -> None:
     @track_dynamic_sampling
     def skipped() -> None:
-        raise DynamicSamplingException(TelemetryStatus.NO_SUBSCRIPTION)
+        raise DynamicSamplingException(DynamicSamplingStatus.NO_SUBSCRIPTION)
 
     timer, timer_tags = _capture_timer_tags()
     with (
@@ -104,9 +106,11 @@ def test_emits_terminal_status_exception_without_failed_status() -> None:
         patch("sentry.dynamic_sampling.per_org.tasks.telemetry.emit_status") as emit,
         patch("sentry.dynamic_sampling.per_org.tasks.telemetry.sentry_sdk") as sdk,
     ):
-        assert skipped() == TelemetryStatus.NO_SUBSCRIPTION
+        assert skipped() == DynamicSamplingStatus.NO_SUBSCRIPTION
 
     timer_mock.assert_called_once_with("dynamic_sampling.skipped.duration", sample_rate=1.0)
-    assert timer_tags["status"] == TelemetryStatus.NO_SUBSCRIPTION.value
-    emit.assert_called_once_with("dynamic_sampling.skipped.status", TelemetryStatus.NO_SUBSCRIPTION)
+    assert timer_tags["status"] == DynamicSamplingStatus.NO_SUBSCRIPTION.value
+    emit.assert_called_once_with(
+        "dynamic_sampling.skipped.status", DynamicSamplingStatus.NO_SUBSCRIPTION
+    )
     sdk.capture_exception.assert_not_called()
